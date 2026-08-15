@@ -22,11 +22,22 @@ class User extends Authenticatable
      *
      * @return array<string, string>
      */
+
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function projects(){
+     return $this->belongsToMany(Project::class)
+            ->withPivot('role')
+            ->withTimestamps();    
+    }
+
+    public function ownedProjects(){
+        return $this->hasMany(Project::class);
     }
 }
