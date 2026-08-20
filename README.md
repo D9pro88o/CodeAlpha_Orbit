@@ -1,58 +1,179 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Orbit 🪐
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+**Track. Assign. Deliver.**
 
-## About Laravel
+Orbit is a collaborative project management tool — think Trello/Asana — built with Laravel and Livewire. Teams can create shared projects, organize work on kanban-style boards, assign tasks to members, and discuss work directly inside each task, with live updates pushed over WebSockets.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Features
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- **Authentication** — registration, login, password reset (Laravel Breeze)
+- **Group Projects** — create projects and invite teammates by email
+- **Kanban Boards** — custom task lists (columns) per project, fully editable
+- **Task Cards** — title, description, assignee, due date
+- **Comments** — threaded discussion inside each task
+- **Notifications** — in-app alerts for task assignment, comments, and project invites
+- **Real-time updates** — board changes and notifications push live via WebSockets (Laravel Reverb) — no page refresh needed
+- **Access control** — project-level policies ensure only owners/members can view, edit, or delete what they should
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Tech Stack
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Layer | Technology |
+|---|---|
+| Backend | Laravel 12 |
+| Frontend | Livewire 3 (server-driven, no separate JS framework) |
+| Styling | Tailwind CSS (custom design system — see below) |
+| Real-time | Laravel Reverb (WebSocket server) + Laravel Echo |
+| Auth scaffolding | Laravel Breeze (Livewire stack) |
+| Database | MySQL (or SQLite for local dev) |
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+---
 
-## Agentic Development
+## Architecture Overview
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### Data model
 
-```bash
-composer require laravel/boost --dev
+```
+User
+ ├── owns many Projects
+ ├── belongs to many Projects (via project_user pivot, with role: owner/member)
+ └── has many Comments
 
-php artisan boost:install
+Project
+ ├── belongs to one User (owner)
+ ├── belongs to many Users (members)
+ └── has many TaskLists
+
+TaskList (kanban column)
+ ├── belongs to Project
+ └── has many Tasks
+
+Task
+ ├── belongs to TaskList
+ ├── belongs to User (assignee, nullable)
+ ├── belongs to User (creator)
+ └── has many Comments
+
+Comment
+ ├── belongs to Task
+ └── belongs to User
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### Why Livewire instead of a separate API + SPA
 
-## Contributing
+Orbit's UI is mostly server-driven interactive state (boards, cards, modals, comment threads) — a natural fit for Livewire's model, where each component acts as its own controller + view. This avoids the overhead of a separate REST/JSON API and frontend framework for a project of this scope, while still supporting live, reactive UI.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Real-time layer
 
-## Code of Conduct
+Two categories of events broadcast over private, per-user or per-project WebSocket channels via **Laravel Reverb**:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+- **Notifications** (`App.Models.User.{id}` channel) — task assignment, comments, and project invites
+- **Board updates** (`project.{id}` channel) — task/list created, updated, deleted — so all project members see the board update live, without refreshing
 
-## Security Vulnerabilities
+Livewire components subscribe to these channels using `echo-private:` listeners, so incoming events trigger a re-render automatically.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+---
 
-## License
+## Local Setup
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### Requirements
+
+- PHP 8.3+ (see note on PHP 8.5 below)
+- Composer
+- Node.js + npm
+- MySQL or SQLite
+
+### Installation
+
+```bash
+git clone <your-repo-url> orbit
+cd orbit
+
+composer install
+npm install
+
+cp .env.example .env
+php artisan key:generate
+```
+
+Configure your database in `.env`, then:
+
+```bash
+php artisan migrate
+php artisan notifications:table
+php artisan migrate
+
+php artisan install:broadcasting   # sets up Reverb + Echo, if not already configured
+```
+
+### Running the app (3 processes, each in its own terminal)
+
+```bash
+php artisan serve          # the app itself — http://127.0.0.1:8000
+php artisan reverb:start   # WebSocket server for real-time updates
+npm run dev                # Vite asset bundling / hot reload
+```
+
+### Known compatibility note
+
+A class-name collision (`Comment`) was observed on **PHP 8.5** due to its new native DOM extension classes. If you hit `Call to private Dom\Node::__construct()`, either explicitly `use App\Models\Comment;` wherever it's referenced, or run the project on PHP 8.3/8.4 instead.
+
+---
+
+## Design System
+
+Orbit's visual identity is built around a "mission control" aesthetic — dark instrument-panel chrome paired with a light workspace canvas, echoing the literal orbital-mechanics theme of the app's name.
+
+| Token | Hex | Use |
+|---|---|---|
+| Ink Navy | `#12182B` | Nav bar, chrome |
+| Panel Slate | `#1D2540` | Hover/secondary dark surfaces |
+| Canvas | `#EDEEE9` | Main workspace background |
+| Signal Amber | `#E8A33D` | Primary actions, active states |
+| Orbit Teal | `#2F8F8C` | Links, secondary accents |
+| Ink Text | `#1A1F2C` | Body text |
+
+**Type:** Space Grotesk (headings), IBM Plex Sans (body), IBM Plex Mono (metadata/labels)
+
+**Signature element:** every user avatar is a navy initials-badge wrapped in a thin dashed teal ring — an "orbit ring" — used consistently for assignees, commenters, and project members.
+
+---
+
+## Project Structure Highlights
+
+```
+app/
+  Livewire/            → all interactive UI components (projects, boards, tasks, comments, notifications)
+  Models/              → Eloquent models (Project, TaskList, Task, Comment, User)
+  Notifications/       → TaskAssigned, TaskCommented, AddedToProject
+  Events/              → TaskCreated, TaskUpdated, TaskDeleted, TaskListCreated (broadcast events)
+  Policies/            → ProjectPolicy (view/update/delete/addMember authorization)
+
+resources/views/
+  livewire/            → Blade views paired with each Livewire component
+  components/          → shared Blade components (orbit-avatar, form inputs, etc.)
+  layouts/             → app shell + guest/auth layout
+
+routes/
+  web.php              → page routes (mostly routed directly to Livewire components)
+  channels.php         → private broadcast channel authorization
+```
+
+---
+
+## Roadmap / Possible Next Steps
+
+- Drag-and-drop task reordering between lists (Sortable.js + Alpine)
+- Email notifications alongside in-app/database ones
+- Task due-date reminders
+- File attachments on tasks
+- Activity log per project
+
+---
+
+## Credits
+
+Built as a learning project to practice full-stack Laravel + Livewire development, real-time features with Reverb, and applied UI design.
